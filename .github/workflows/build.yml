@@ -25,7 +25,7 @@ jobs:
     - name: Siapkan Gradle & Rakit APK
       run: |
         cd NightBrowse_Mobile_Project
-        gradle wrapper
+        gradle wrapper --gradle-version 8.4
         chmod +x gradlew
         ./gradlew assembleDebug
 
