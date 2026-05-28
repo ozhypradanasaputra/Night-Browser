@@ -43,7 +43,7 @@ jobs:
         </menu>
         EOF
 
-    - name: Upgrade Layout XML (Smart Address Bar)
+    - name: Upgrade Layout XML (Smart Address Bar Fix)
       run: |
         cat << 'EOF' > NightBrowse_Mobile_Project/app/src/main/res/layout/activity_main.xml
         <?xml version="1.0" encoding="utf-8"?>
@@ -51,7 +51,7 @@ jobs:
             <LinearLayout android:id="@+id/topBar" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:padding="12dp" android:gravity="center_vertical" android:background="@color/night_surface" app:layout_constraintTop_toTopOf="parent">
                 <ImageView android:id="@+id/incognitoIndicator" android:layout_width="24dp" android:layout_height="24dp" android:src="@android:drawable/ic_menu_view" android:visibility="gone" android:layout_marginEnd="8dp" app:tint="@color/accent_purple" />
                 <com.google.android.material.textfield.TextInputLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" app:boxCornerRadiusTopStart="16dp" app:boxCornerRadiusTopEnd="16dp" app:boxCornerRadiusBottomStart="16dp" app:boxCornerRadiusBottomEnd="16dp" app:boxBackgroundColor="@color/night_card" app:boxStrokeWidth="0dp" app:boxStrokeWidthFocused="1dp" app:boxStrokeColor="@color/accent_purple" app:hintEnabled="false">
-                    <AutoCompleteTextView android:id="@+id/urlEditText" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Cari atau masukkan URL..." android:textColorHint="@color/text_secondary" android:textColor="@color/text_primary" android:inputType="textUri" android:imeOptions="actionGo" android:maxLines="1" android:padding="10dp" android:completionThreshold="1" android:dropDownBackground="@color/night_surface" android:background="@null"/>
+                    <AutoCompleteTextView android:id="@+id/urlEditText" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Cari atau masukkan URL..." android:textColorHint="@color/text_secondary" android:textColor="@color/text_primary" android:inputType="textUri" android:imeOptions="actionGo" android:maxLines="1" android:padding="10dp" android:completionThreshold="1" android:background="@null"/>
                 </com.google.android.material.textfield.TextInputLayout>
                 <ImageView android:id="@+id/btnRefresh" android:layout_width="28dp" android:layout_height="28dp" android:layout_marginStart="8dp" android:src="@android:drawable/stat_notify_sync" app:tint="@color/text_primary" />
             </LinearLayout>
@@ -115,7 +115,6 @@ jobs:
                 urlAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, history)
                 binding.urlEditText.setAdapter(urlAdapter)
                 
-                // Menampilkan dropdown saat kolom diklik
                 binding.urlEditText.setOnClickListener { binding.urlEditText.showDropDown() }
 
                 tabManager = TabManager(this)
@@ -163,8 +162,8 @@ jobs:
                             binding.urlEditText.setText(url)
                             url?.let { 
                                 if(!isIncognito && !history.contains(it) && !it.startsWith("data:")) { 
-                                    history.add(0, it) // Tambah di posisi paling atas
-                                    if(history.size > 50) history.removeAt(history.size - 1) // Batasi 50 riwayat
+                                    history.add(0, it) 
+                                    if(history.size > 50) history.removeAt(history.size - 1) 
                                     urlAdapter.notifyDataSetChanged()
                                     savePermanentData()
                                 } 
