@@ -28,7 +28,7 @@ jobs:
         echo "android.enableJetifier=true" >> NightBrowse_Mobile_Project/gradle.properties
         sed -i 's/getSystemService(DOWNLOAD_SERVICE)/getSystemService(android.content.Context.DOWNLOAD_SERVICE)/g' NightBrowse_Mobile_Project/app/src/main/java/com/nightbrowse/app/MainActivity.kt
         sed -i 's/Toast.makeText(context,/Toast.makeText(this@MainActivity,/g' NightBrowse_Mobile_Project/app/src/main/java/com/nightbrowse/app/MainActivity.kt
-        sed -i 's/@mipmap\/ic_launcher/@android:drawable\/sym_def_app_icon/g' NightBrowse_Mobile_Project/app/src/main/AndroidManifest.xml
+        sed -i 's/android:icon="@mipmap\/ic_launcher"/android:icon="@android:drawable\/sym_def_app_icon"/g' NightBrowse_Mobile_Project/app/src/main/AndroidManifest.xml
         sed -i 's/android:roundIcon="@mipmap\/ic_launcher_round"//g' NightBrowse_Mobile_Project/app/src/main/AndroidManifest.xml
 
     - name: Siapkan Gradle & Rakit APK
