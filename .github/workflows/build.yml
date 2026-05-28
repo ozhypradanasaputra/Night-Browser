@@ -46,7 +46,7 @@ jobs:
         </menu>
         EOF
 
-    - name: Upgrade MainActivity (Fullscreen Mode + Control Panel)
+    - name: Upgrade MainActivity (Bottom Sheet Menu ala Samsung Internet)
       run: |
         cat << 'EOF' > NightBrowse_Mobile_Project/app/src/main/java/com/nightbrowse/app/MainActivity.kt
         package com.nightbrowse.app
@@ -65,8 +65,11 @@ jobs:
         import android.webkit.WebChromeClient
         import android.webkit.WebSettings
         import android.webkit.WebView
+        import android.widget.ArrayAdapter
+        import android.widget.ListView
         import android.widget.Toast
         import androidx.appcompat.app.AppCompatActivity
+        import com.google.android.material.bottomsheet.BottomSheetDialog
         import com.nightbrowse.app.databinding.ActivityMainBinding
 
         class MainActivity : AppCompatActivity() {
@@ -146,7 +149,6 @@ jobs:
                             customViewCallback?.onCustomViewHidden()
                             binding.webViewContainer.visibility = View.VISIBLE
                             
-                            // Hanya tampilkan bar lagi jika tidak sedang dalam mode Fullscreen Aplikasi
                             if(!isAppFullScreen) {
                                 binding.topBar.visibility = View.VISIBLE
                                 binding.bottomNavigation.visibility = View.VISIBLE
@@ -249,7 +251,7 @@ jobs:
                 binding.topBar.visibility = View.GONE
                 binding.bottomNavigation.visibility = View.GONE
                 window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
-                Toast.makeText(this, "Tampilan Penuh Aktif. Tekan tombol BACK di HP untuk keluar.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Tampilan Penuh Aktif. Tekan BACK untuk keluar.", Toast.LENGTH_LONG).show()
             }
 
             private fun exitFullScreenMode() {
@@ -260,10 +262,16 @@ jobs:
             }
 
             private fun showSettingsControlPanel() {
+                val bottomSheetDialog = BottomSheetDialog(this)
+                val listView = ListView(this).apply {
+                    setBackgroundColor(android.graphics.Color.parseColor("#1A1A24"))
+                    setPadding(16, 32, 16, 32)
+                }
+
                 val currentEngineName = if (currentSearchEngine.contains("google")) "Google Search" else "DuckDuckGo"
                 val items = arrayOf(
-                    "🛡️ AdBlocker Shield: ${if(AdBlocker.isEnabled) "AKTIF (ON)" else "NONAKTIF (OFF)"}",
-                    "🕵️ Mode Incognito: ${if(isIncognito) "AKTIF (ON)" else "NONAKTIF (OFF)"}",
+                    "🛡️ AdBlocker Shield: ${if(AdBlocker.isEnabled) "AKTIF" else "NONAKTIF"}",
+                    "🕵️ Mode Incognito: ${if(isIncognito) "AKTIF" else "NONAKTIF"}",
                     "🔍 Mesin Pencari: [$currentEngineName]",
                     "🔲 Aktifkan Mode Layar Penuh",
                     "⭐ Tambahkan Halaman ke Bookmark",
@@ -273,71 +281,64 @@ jobs:
                     "⬇️ Unduh Halaman Web Ini (HTML)",
                     "🧹 Hapus Seluruh Cache & Cookies"
                 )
-                
-                AlertDialog.Builder(this)
-                    .setTitle("🎛️ CONTROL PANEL UTAMA")
-                    .setItems(items) { _, which ->
-                        when (which) {
-                            0 -> {
-                                AdBlocker.isEnabled = !AdBlocker.isEnabled
-                                Toast.makeText(this, "AdBlocker Shield diubah!", Toast.LENGTH_SHORT).show()
-                            }
-                            1 -> {
-                                isIncognito = !isIncognito
-                                binding.incognitoIndicator.visibility = if (isIncognito) View.VISIBLE else View.GONE
-                                if(isIncognito) {
-                                    CookieManager.getInstance().removeAllCookies(null)
-                                    tabManager.getCurrentTab()?.clearCache(true)
-                                }
-                                Toast.makeText(this, "Status Incognito Diperbarui!", Toast.LENGTH_SHORT).show()
-                            }
-                            2 -> {
-                                currentSearchEngine = if(currentSearchEngine.contains("google")) {
-                                    "https://duckduckgo.com/?q="
-                                } else {
-                                    "https://www.google.com/search?q="
-                                }
-                                Toast.makeText(this, "Mesin pencari dialihkan!", Toast.LENGTH_SHORT).show()
-                            }
-                            3 -> toggleFullScreenMode()
-                            4 -> {
-                                tabManager.getCurrentTab()?.url?.let {
-                                    bookmarks.add(it)
-                                    Toast.makeText(this, "Berhasil masuk daftar Bookmark!", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                            5 -> {
-                                val bmkString = if(bookmarks.isEmpty()) "Daftar Bookmark Kosong." else bookmarks.joinToString("\n")
-                                AlertDialog.Builder(this).setTitle("⭐ DAFTAR BOOKMARK").setMessage(bmkString).show()
-                            }
-                            6 -> {
-                                val histString = if(history.isEmpty()) "Riwayat jelajah kosong." else history.joinToString("\n")
-                                AlertDialog.Builder(this).setTitle("⏳ RIWAYAT KUNJUNGAN").setMessage(histString).show()
-                            }
-                            7 -> showTabManagementMenu()
-                            8 -> tabManager.getCurrentTab()?.url?.let { startDownload(it, "NightBrowse", "text/html") }
-                            9 -> {
-                                CookieManager.getInstance().removeAllCookies(null)
-                                tabManager.getCurrentTab()?.clearCache(true)
-                                Toast.makeText(this, "Seluruh data cache dibersihkan!", Toast.LENGTH_SHORT).show()
-                            }
+
+                // Layout Adapter untuk teks warna putih rapi khas dark mode Samsung Internet
+                val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, items) {
+                    override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                        val view = super.getView(position, convertView, parent)
+                        val textView = view.findViewById<android.widget.TextView>(android.R.layout.text1)
+                        textView.setTextColor(android.graphics.Color.WHITE)
+                        textView.textSize = 16f
+                        view.setPadding(30, 40, 30, 40)
+                        return view
+                    }
+                }
+
+                listView.adapter = adapter
+                listView.setOnItemClickListener { _, _, which, _ ->
+                    bottomSheetDialog.dismiss()
+                    when (which) {
+                        0 -> {
+                            AdBlocker.isEnabled = !AdBlocker.isEnabled
+                            Toast.makeText(this, "Status AdBlocker Diperbarui!", Toast.LENGTH_SHORT).show()
                         }
-                    }.show()
+                        1 -> {
+                            isIncognito = !isIncognito
+                            binding.incognitoIndicator.visibility = if (isIncognito) View.VISIBLE else View.GONE
+                            if(isIncognito) CookieManager.getInstance().removeAllCookies(null)
+                        }
+                        2 -> {
+                            currentSearchEngine = if(currentSearchEngine.contains("google")) "https://duckduckgo.com/?q=" else "https://www.google.com/search?q="
+                            Toast.makeText(this, "Mesin pencari dialihkan!", Toast.LENGTH_SHORT).show()
+                        }
+                        3 -> toggleFullScreenMode()
+                        4 -> tabManager.getCurrentTab()?.url?.let { bookmarks.add(it); Toast.makeText(this, "Disimpan!", Toast.LENGTH_SHORT).show() }
+                        5 -> AlertDialog.Builder(this).setTitle("⭐ BOOKMARK").setMessage(if(bookmarks.isEmpty()) "Kosong." else bookmarks.joinToString("\n")).show()
+                        6 -> AlertDialog.Builder(this).setTitle("⏳ HISTORY").setMessage(if(history.isEmpty()) "Kosong." else history.joinToString("\n")).show()
+                        7 -> showTabManagementMenu()
+                        8 -> tabManager.getCurrentTab()?.url?.let { startDownload(it, "NightBrowse", "text/html") }
+                        9 -> {
+                            CookieManager.getInstance().removeAllCookies(null)
+                            tabManager.getCurrentTab()?.clearCache(true)
+                            Toast.makeText(this, "Cache dibersihkan!", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+
+                bottomSheetDialog.setContentView(listView)
+                bottomSheetDialog.show()
             }
 
             @Deprecated("Deprecated in Java")
             override fun onBackPressed() {
-                // Prioritas 1: Keluar dari video fullscreen
                 if (customView != null) {
                     tabManager.getCurrentTab()?.webChromeClient?.onHideCustomView()
                     return
                 }
-                // Prioritas 2: Keluar dari UI App Fullscreen
                 if (isAppFullScreen) {
                     exitFullScreenMode()
                     return
                 }
-                // Prioritas 3: Kembali ke halaman sebelumnya
                 val currentWeb = tabManager.getCurrentTab()
                 if (currentWeb?.canGoBack() == true) currentWeb.goBack() else super.onBackPressed()
             }
