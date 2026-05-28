@@ -22,14 +22,302 @@ jobs:
     - name: Ekstrak File ZIP
       run: unzip -o NightBrowse_SourceCode.zip
 
-    - name: Trik Cepat Perbaiki Kode (Auto-Patch)
+    - name: Auto-Patching Sistem Ikon
       run: |
         echo "android.useAndroidX=true" > NightBrowse_Mobile_Project/gradle.properties
         echo "android.enableJetifier=true" >> NightBrowse_Mobile_Project/gradle.properties
-        sed -i 's/getSystemService(DOWNLOAD_SERVICE)/getSystemService(android.content.Context.DOWNLOAD_SERVICE)/g' NightBrowse_Mobile_Project/app/src/main/java/com/nightbrowse/app/MainActivity.kt
-        sed -i 's/Toast.makeText(context,/Toast.makeText(this@MainActivity,/g' NightBrowse_Mobile_Project/app/src/main/java/com/nightbrowse/app/MainActivity.kt
         sed -i 's/android:icon="@mipmap\/ic_launcher"/android:icon="@android:drawable\/sym_def_app_icon"/g' NightBrowse_Mobile_Project/app/src/main/AndroidManifest.xml
         sed -i 's/android:roundIcon="@mipmap\/ic_launcher_round"//g' NightBrowse_Mobile_Project/app/src/main/AndroidManifest.xml
+
+    - name: Patch Menu XML untuk Tombol Home Lengkap
+      run: |
+        cat << 'EOF' > NightBrowse_Mobile_Project/app/src/main/res/menu/bottom_nav_menu.xml
+        <?xml version="1.0" encoding="utf-8"?>
+        <menu xmlns:android="http://schemas.android.com/apk/res/android">
+            <item android:id="@+id/nav_back" android:icon="@android:drawable/ic_media_previous" android:title="Back"/>
+            <item android:id="@+id/nav_forward" android:icon="@android:drawable/ic_media_next" android:title="Forward"/>
+            <item android:id="@+id/nav_home" android:icon="@android:drawable/ic_menu_home" android:title="Home"/>
+            <item android:id="@+id/nav_reader" android:icon="@android:drawable/ic_menu_agenda" android:title="Reader"/>
+            <item android:id="@+id/nav_menu" android:icon="@android:drawable/ic_menu_manage" android:title="Menu"/>
+        </menu>
+        EOF
+
+    - name: Upgrade MainActivity (Home + Control Panel Lengkap)
+      run: |
+        cat << 'EOF' > NightBrowse_Mobile_Project/app/src/main/java/com/nightbrowse/app/MainActivity.kt
+        package com.nightbrowse.app
+
+        import android.annotation.SuppressLint
+        import android.app.AlertDialog
+        import android.app.DownloadManager
+        import android.content.Context
+        import android.net.Uri
+        import android.os.Bundle
+        import android.os.Environment
+        import android.view.View
+        import android.view.ViewGroup
+        import android.view.inputmethod.EditorInfo
+        import android.webkit.CookieManager
+        import android.webkit.WebChromeClient
+        import android.webkit.WebSettings
+        import android.webkit.WebView
+        import android.widget.Toast
+        import androidx.appcompat.app.AppCompatActivity
+        import com.nightbrowse.app.databinding.ActivityMainBinding
+
+        class MainActivity : AppCompatActivity() {
+
+            private lateinit var binding: ActivityMainBinding
+            private lateinit var tabManager: TabManager
+            
+            private var isIncognito = false
+            private var currentSearchEngine = "https://duckduckgo.com/?q="
+            private val bookmarks = mutableListOf<String>()
+            private val history = mutableListOf<String>()
+
+            private var customView: View? = null
+            private var customViewCallback: WebChromeClient.CustomViewCallback? = null
+
+            override fun onCreate(savedInstanceState: Bundle?) {
+                super.onCreate(savedInstanceState)
+                binding = ActivityMainBinding.inflate(layoutInflater)
+                setContentView(binding.root)
+
+                tabManager = TabManager(this)
+                setupNewTab()
+                setupUIListeners()
+            }
+
+            private fun setupNewTab() {
+                val webView = tabManager.createNewTab { createConfiguredWebView() }
+                binding.webViewContainer.removeAllViews()
+                binding.webViewContainer.addView(webView)
+                webView.loadUrl("https://duckduckgo.com")
+            }
+
+            @SuppressLint("SetJavaScriptEnabled")
+            private fun createConfiguredWebView(): WebView {
+                return WebView(this).apply {
+                    layoutParams = android.widget.FrameLayout.LayoutParams(
+                        android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                        android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                    
+                    webViewClient = NightWebViewClient(
+                        onPageLoadStarted = {
+                            binding.loadingProgress.visibility = View.VISIBLE
+                            binding.loadingProgress.setProgress(30, true)
+                        },
+                        onPageLoadFinished = { url ->
+                            binding.loadingProgress.visibility = View.GONE
+                            binding.urlEditText.setText(url)
+                            url?.let { if(!isIncognito) history.add(it) }
+                        }
+                    )
+
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                            binding.loadingProgress.setProgress(newProgress, true)
+                        }
+
+                        override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                            if (customView != null) {
+                                callback?.onCustomViewHidden()
+                                return
+                            }
+                            customView = view
+                            customViewCallback = callback
+                            binding.webViewContainer.visibility = View.GONE
+                            binding.topBar.visibility = View.GONE
+                            binding.bottomNavigation.visibility = View.GONE
+                            (binding.root as ViewGroup).addView(view, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                            window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+                        }
+
+                        override fun onHideCustomView() {
+                            if (customView == null) return
+                            (binding.root as ViewGroup).removeView(customView)
+                            customView = null
+                            customViewCallback?.onCustomViewHidden()
+                            binding.webViewContainer.visibility = View.VISIBLE
+                            binding.topBar.visibility = View.VISIBLE
+                            binding.bottomNavigation.visibility = View.VISIBLE
+                            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+                        }
+                    }
+
+                    settings.apply {
+                        javaScriptEnabled = true
+                        domStorageEnabled = true
+                        databaseEnabled = true
+                        mediaPlaybackRequiresUserGesture = false 
+                        cacheMode = if (isIncognito) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
+                        setSupportMultipleWindows(false)
+                    }
+
+                    if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
+                        androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
+                    }
+
+                    setDownloadListener { url, userAgent, _, mimetype, _ ->
+                        startDownload(url, userAgent, mimetype)
+                    }
+
+                    setOnLongClickListener {
+                        val result = hitTestResult
+                        if (result.type == WebView.HitTestResult.IMAGE_TYPE || result.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
+                            result.extra?.let { imgUrl ->
+                                AlertDialog.Builder(this@MainActivity)
+                                    .setTitle("Download Gambar")
+                                    .setMessage("Simpan gambar ini ke HP?")
+                                    .setPositiveButton("Ya") { _, _ -> startDownload(imgUrl, "NightBrowse", "image/*") }
+                                    .setNegativeButton("Batal", null)
+                                    .show()
+                            }
+                            true
+                        } else false
+                    }
+                }
+            }
+
+            private fun startDownload(url: String, userAgent: String, mimetype: String) {
+                try {
+                    val request = DownloadManager.Request(Uri.parse(url)).apply {
+                        setMimeType(mimetype)
+                        addRequestHeader("User-Agent", userAgent)
+                        setTitle("NightBrowse_Download")
+                        setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "File_${System.currentTimeMillis()}")
+                    }
+                    val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    dm.enqueue(request)
+                    Toast.makeText(this@MainActivity, "Mulai download...", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "Gagal: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            private fun setupUIListeners() {
+                binding.urlEditText.setOnEditorActionListener { _, actionId, _ ->
+                    if (actionId == EditorInfo.IME_ACTION_GO) {
+                        executeSearchOrUrl(binding.urlEditText.text.toString())
+                        true
+                    } else false
+                }
+                binding.btnRefresh.setOnClickListener { tabManager.getCurrentTab()?.reload() }
+                binding.bottomNavigation.setOnItemSelectedListener { item ->
+                    val currentWeb = tabManager.getCurrentTab()
+                    when (item.itemId) {
+                        R.id.nav_back -> if (currentWeb?.canGoBack() == true) currentWeb.goBack()
+                        R.id.nav_forward -> if (currentWeb?.canGoForward() == true) currentWeb.goForward()
+                        R.id.nav_home -> currentWeb?.loadUrl("https://duckduckgo.com")
+                        R.id.nav_reader -> triggerReaderMode()
+                        R.id.nav_menu -> showSettingsControlPanel()
+                    }
+                    true
+                }
+            }
+
+            private fun executeSearchOrUrl(input: String) {
+                val cleanInput = input.trim()
+                val targetUrl = if (cleanInput.startsWith("http")) cleanInput else if (cleanInput.contains(".") && !cleanInput.contains(" ")) "https://$cleanInput" else currentSearchEngine + cleanInput
+                tabManager.getCurrentTab()?.loadUrl(targetUrl)
+            }
+
+            private fun triggerReaderMode() {
+                val js = "(function(){var t=\"\";document.querySelectorAll('p,h1,h2').forEach(function(p){t+=p.outerHTML;});document.body.innerHTML=\"<div style='background:#121212;color:#fff;padding:20px;font-size:18px;'>\"+t+\"</div>\";})();"
+                tabManager.getCurrentTab()?.evaluateJavascript(js, null)
+            }
+
+            private fun showTabManagementMenu() {
+                AlertDialog.Builder(this).setItems(arrayOf("🛠️ Tambah Tab Baru", "📱 Tab Aktif (${tabManager.getTabCount()})", "🔄 Reset Semua Tab")) { _, w ->
+                    if (w == 0) setupNewTab() else if (w == 2) { tabManager = TabManager(this); setupNewTab() }
+                }.show()
+            }
+
+            private fun showSettingsControlPanel() {
+                val currentEngineName = if (currentSearchEngine.contains("duck")) "DuckDuckGo" else "Google Search"
+                val items = arrayOf(
+                    "🛡️ AdBlocker Shield: ${if(AdBlocker.isEnabled) "AKTIF (ON)" else "NONAKTIF (OFF)"} [Blokir: ${AdBlocker.adsBlockedCount}]",
+                    "🕵️ Mode Incognito: ${if(isIncognito) "AKTIF (ON)" else "NONAKTIF (OFF)"}",
+                    "🔍 Mesin Pencari: [$currentEngineName]",
+                    "⭐ Tambahkan Halaman ke Bookmark",
+                    "📚 Buka Daftar Bookmark",
+                    "⏳ Lihat Riwayat Jelajah (History)",
+                    "📑 Manajer Tab Browsing",
+                    "⬇️ Unduh Halaman Web Ini (HTML)",
+                    "🧹 Hapus Seluruh Cache & Cookies",
+                    "ℹ️ Tentang NightBrowse Browser"
+                )
+                
+                AlertDialog.Builder(this)
+                    .setTitle("🎛️ CONTROL PANEL UTAMA")
+                    .setItems(items) { _, which ->
+                        when (which) {
+                            0 -> {
+                                AdBlocker.isEnabled = !AdBlocker.isEnabled
+                                Toast.makeText(this, "AdBlocker Shield diubah!", Toast.LENGTH_SHORT).show()
+                            }
+                            1 -> {
+                                isIncognito = !isIncognito
+                                binding.incognitoIndicator.visibility = if (isIncognito) View.VISIBLE else View.GONE
+                                if(isIncognito) {
+                                    CookieManager.getInstance().removeAllCookies(null)
+                                    tabManager.getCurrentTab()?.clearCache(true)
+                                }
+                                Toast.makeText(this, "Status Incognito Diperbarui!", Toast.LENGTH_SHORT).show()
+                            }
+                            2 -> {
+                                currentSearchEngine = if(currentSearchEngine.contains("duck")) {
+                                    "https://www.google.com/search?q="
+                                } else {
+                                    "https://duckduckgo.com/?q="
+                                }
+                                Toast.makeText(this, "Mesin pencari dialihkan!", Toast.LENGTH_SHORT).show()
+                            }
+                            3 -> {
+                                tabManager.getCurrentTab()?.url?.let {
+                                    bookmarks.add(it)
+                                    Toast.makeText(this, "Berhasil masuk daftar Bookmark!", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            4 -> {
+                                val bmkString = if(bookmarks.isEmpty()) "Daftar Bookmark Kosong." else bookmarks.joinToString("\n")
+                                AlertDialog.Builder(this).setTitle("⭐ DAFTAR BOOKMARK").setMessage(bmkString).show()
+                            }
+                            5 -> {
+                                val histString = if(history.isEmpty()) "Riwayat jelajah kosong." else history.joinToString("\n")
+                                AlertDialog.Builder(this).setTitle("⏳ RIWAYAT KUNJUNGAN").setMessage(histString).show()
+                            }
+                            6 -> showTabManagementMenu()
+                            7 -> tabManager.getCurrentTab()?.url?.let { startDownload(it, "NightBrowse", "text/html") }
+                            8 -> {
+                                CookieManager.getInstance().removeAllCookies(null)
+                                tabManager.getCurrentTab()?.clearCache(true)
+                                Toast.makeText(this, "Seluruh data cache dibersihkan!", Toast.LENGTH_SHORT).show()
+                            }
+                            9 -> {
+                                AlertDialog.Builder(this)
+                                    .setTitle("NightBrowse Browser")
+                                    .setMessage("Sistem Browser Gelap Futuristik Terintegrasi.\nMinim RAM, Dilengkapi Shield AdBlocker.\nDikembangkan murni via Mobile Automation Toolchain.")
+                                    .setPositiveButton("Keren", null)
+                                    .show()
+                            }
+                        }
+                    }.show()
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onBackPressed() {
+                if (customView != null) {
+                    tabManager.getCurrentTab()?.webChromeClient?.onHideCustomView()
+                    return
+                }
+                val currentWeb = tabManager.getCurrentTab()
+                if (currentWeb?.canGoBack() == true) currentWeb.goBack() else super.onBackPressed()
+            }
+        }
+        EOF
 
     - name: Siapkan Gradle & Rakit APK
       run: |
@@ -43,3 +331,4 @@ jobs:
       with:
         name: NightBrowse-APK
         path: NightBrowse_Mobile_Project/app/build/outputs/apk/debug/app-debug.apk
+        
