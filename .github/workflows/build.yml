@@ -29,14 +29,18 @@ jobs:
         sed -i 's/android:icon="@mipmap\/ic_launcher"/android:icon="@android:drawable\/sym_def_app_icon"/g' NightBrowse_Mobile_Project/app/src/main/AndroidManifest.xml
         sed -i 's/android:roundIcon="@mipmap\/ic_launcher_round"//g' NightBrowse_Mobile_Project/app/src/main/AndroidManifest.xml
 
-    - name: Patch Menu XML untuk Tombol Home Lengkap
+    - name: Buat Ikon Home Custom & Patch Menu XML
       run: |
+        mkdir -p NightBrowse_Mobile_Project/app/src/main/res/drawable
+        cat << 'EOF' > NightBrowse_Mobile_Project/app/src/main/res/drawable/ic_custom_home.xml
+        <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24.0" android:viewportHeight="24.0"><path android:fillColor="#FFFFFF" android:pathData="M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z"/></vector>
+        EOF
         cat << 'EOF' > NightBrowse_Mobile_Project/app/src/main/res/menu/bottom_nav_menu.xml
         <?xml version="1.0" encoding="utf-8"?>
         <menu xmlns:android="http://schemas.android.com/apk/res/android">
             <item android:id="@+id/nav_back" android:icon="@android:drawable/ic_media_previous" android:title="Back"/>
             <item android:id="@+id/nav_forward" android:icon="@android:drawable/ic_media_next" android:title="Forward"/>
-            <item android:id="@+id/nav_home" android:icon="@android:drawable/ic_menu_home" android:title="Home"/>
+            <item android:id="@+id/nav_home" android:icon="@drawable/ic_custom_home" android:title="Home"/>
             <item android:id="@+id/nav_reader" android:icon="@android:drawable/ic_menu_agenda" android:title="Reader"/>
             <item android:id="@+id/nav_menu" android:icon="@android:drawable/ic_menu_manage" android:title="Menu"/>
         </menu>
@@ -331,4 +335,4 @@ jobs:
       with:
         name: NightBrowse-APK
         path: NightBrowse_Mobile_Project/app/build/outputs/apk/debug/app-debug.apk
-        
+    
