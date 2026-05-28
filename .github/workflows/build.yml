@@ -312,4 +312,27 @@ jobs:
             }
 
             @Deprecated("Deprecated in Java")
-            
+            override fun onBackPressed() {
+                if (customView != null) {
+                    tabManager.getCurrentTab()?.webChromeClient?.onHideCustomView()
+                    return
+                }
+                val currentWeb = tabManager.getCurrentTab()
+                if (currentWeb?.canGoBack() == true) currentWeb.goBack() else super.onBackPressed()
+            }
+        }
+        EOF
+
+    - name: Siapkan Gradle & Rakit APK
+      run: |
+        cd NightBrowse_Mobile_Project
+        gradle wrapper --gradle-version 8.4
+        chmod +x gradlew
+        ./gradlew assembleDebug
+
+    - name: Upload APK Hasil Jadi
+      uses: actions/upload-artifact@v4
+      with:
+        name: NightBrowse-APK
+        path: NightBrowse_Mobile_Project/app/build/outputs/apk/debug/app-debug.apk
+        
