@@ -22,15 +22,12 @@ jobs:
     - name: Ekstrak File ZIP
       run: unzip -o NightBrowse_SourceCode.zip
 
-    - name: Auto-Patching Sistem Ikon
+    - name: Auto-Patching Sistem Ikon & Custom Menu
       run: |
         echo "android.useAndroidX=true" > NightBrowse_Mobile_Project/gradle.properties
         echo "android.enableJetifier=true" >> NightBrowse_Mobile_Project/gradle.properties
         sed -i 's/android:icon="@mipmap\/ic_launcher"/android:icon="@android:drawable\/sym_def_app_icon"/g' NightBrowse_Mobile_Project/app/src/main/AndroidManifest.xml
         sed -i 's/android:roundIcon="@mipmap\/ic_launcher_round"//g' NightBrowse_Mobile_Project/app/src/main/AndroidManifest.xml
-
-    - name: Buat Ikon Home Custom & Patch Menu XML
-      run: |
         mkdir -p NightBrowse_Mobile_Project/app/src/main/res/drawable
         cat << 'EOF' > NightBrowse_Mobile_Project/app/src/main/res/drawable/ic_custom_home.xml
         <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24.0" android:viewportHeight="24.0"><path android:fillColor="#FFFFFF" android:pathData="M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z"/></vector>
@@ -46,7 +43,25 @@ jobs:
         </menu>
         EOF
 
-    - name: Upgrade MainActivity (Bottom Sheet Menu ala Samsung Internet)
+    - name: Upgrade Layout XML (Smart Address Bar)
+      run: |
+        cat << 'EOF' > NightBrowse_Mobile_Project/app/src/main/res/layout/activity_main.xml
+        <?xml version="1.0" encoding="utf-8"?>
+        <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/night_bg">
+            <LinearLayout android:id="@+id/topBar" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:padding="12dp" android:gravity="center_vertical" android:background="@color/night_surface" app:layout_constraintTop_toTopOf="parent">
+                <ImageView android:id="@+id/incognitoIndicator" android:layout_width="24dp" android:layout_height="24dp" android:src="@android:drawable/ic_menu_view" android:visibility="gone" android:layout_marginEnd="8dp" app:tint="@color/accent_purple" />
+                <com.google.android.material.textfield.TextInputLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" app:boxCornerRadiusTopStart="16dp" app:boxCornerRadiusTopEnd="16dp" app:boxCornerRadiusBottomStart="16dp" app:boxCornerRadiusBottomEnd="16dp" app:boxBackgroundColor="@color/night_card" app:boxStrokeWidth="0dp" app:boxStrokeWidthFocused="1dp" app:boxStrokeColor="@color/accent_purple" app:hintEnabled="false">
+                    <AutoCompleteTextView android:id="@+id/urlEditText" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Cari atau masukkan URL..." android:textColorHint="@color/text_secondary" android:textColor="@color/text_primary" android:inputType="textUri" android:imeOptions="actionGo" android:maxLines="1" android:padding="10dp" android:completionThreshold="1" android:dropDownBackground="@color/night_surface" android:background="@null"/>
+                </com.google.android.material.textfield.TextInputLayout>
+                <ImageView android:id="@+id/btnRefresh" android:layout_width="28dp" android:layout_height="28dp" android:layout_marginStart="8dp" android:src="@android:drawable/stat_notify_sync" app:tint="@color/text_primary" />
+            </LinearLayout>
+            <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/loadingProgress" android:layout_width="match_parent" android:layout_height="wrap_content" android:indeterminate="false" android:visibility="gone" app:trackColor="@color/night_bg" app:indicatorColor="@color/accent_blue" app:layout_constraintTop_toBottomOf="@id/topBar" />
+            <FrameLayout android:id="@+id/webViewContainer" android:layout_width="match_parent" android:layout_height="0dp" app:layout_constraintTop_toBottomOf="@id/loadingProgress" app:layout_constraintBottom_toTopOf="@id/bottomNavigation" />
+            <com.google.android.material.bottomnavigation.BottomNavigationView android:id="@+id/bottomNavigation" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/night_surface" app:itemIconTint="@color/text_primary" app:itemTextColor="@color/text_primary" app:labelVisibilityMode="labeled" app:menu="@menu/bottom_nav_menu" app:layout_constraintBottom_toBottomOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+        EOF
+
+    - name: Upgrade MainActivity (Memori Permanen & Dropdown)
       run: |
         cat << 'EOF' > NightBrowse_Mobile_Project/app/src/main/java/com/nightbrowse/app/MainActivity.kt
         package com.nightbrowse.app
@@ -55,6 +70,7 @@ jobs:
         import android.app.AlertDialog
         import android.app.DownloadManager
         import android.content.Context
+        import android.content.SharedPreferences
         import android.net.Uri
         import android.os.Bundle
         import android.os.Environment
@@ -76,6 +92,8 @@ jobs:
 
             private lateinit var binding: ActivityMainBinding
             private lateinit var tabManager: TabManager
+            private lateinit var sharedPref: SharedPreferences
+            private lateinit var urlAdapter: ArrayAdapter<String>
             
             private var isIncognito = false
             private var isAppFullScreen = false
@@ -91,9 +109,33 @@ jobs:
                 binding = ActivityMainBinding.inflate(layoutInflater)
                 setContentView(binding.root)
 
+                sharedPref = getSharedPreferences("NightBrowseData", Context.MODE_PRIVATE)
+                loadPermanentData()
+
+                urlAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, history)
+                binding.urlEditText.setAdapter(urlAdapter)
+                
+                // Menampilkan dropdown saat kolom diklik
+                binding.urlEditText.setOnClickListener { binding.urlEditText.showDropDown() }
+
                 tabManager = TabManager(this)
                 setupNewTab()
                 setupUIListeners()
+            }
+
+            private fun loadPermanentData() {
+                val savedHistory = sharedPref.getString("history", "") ?: ""
+                if (savedHistory.isNotEmpty()) history.addAll(savedHistory.split(","))
+                
+                val savedBookmarks = sharedPref.getString("bookmarks", "") ?: ""
+                if (savedBookmarks.isNotEmpty()) bookmarks.addAll(savedBookmarks.split(","))
+            }
+
+            private fun savePermanentData() {
+                sharedPref.edit()
+                    .putString("history", history.joinToString(","))
+                    .putString("bookmarks", bookmarks.joinToString(","))
+                    .apply()
             }
 
             private fun setupNewTab() {
@@ -119,7 +161,14 @@ jobs:
                         onPageLoadFinished = { url ->
                             binding.loadingProgress.visibility = View.GONE
                             binding.urlEditText.setText(url)
-                            url?.let { if(!isIncognito) history.add(it) }
+                            url?.let { 
+                                if(!isIncognito && !history.contains(it) && !it.startsWith("data:")) { 
+                                    history.add(0, it) // Tambah di posisi paling atas
+                                    if(history.size > 50) history.removeAt(history.size - 1) // Batasi 50 riwayat
+                                    urlAdapter.notifyDataSetChanged()
+                                    savePermanentData()
+                                } 
+                            }
                         }
                     )
 
@@ -127,63 +176,35 @@ jobs:
                         override fun onProgressChanged(view: WebView?, newProgress: Int) {
                             binding.loadingProgress.setProgress(newProgress, true)
                         }
-
                         override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-                            if (customView != null) {
-                                callback?.onCustomViewHidden()
-                                return
-                            }
-                            customView = view
-                            customViewCallback = callback
-                            binding.webViewContainer.visibility = View.GONE
-                            binding.topBar.visibility = View.GONE
-                            binding.bottomNavigation.visibility = View.GONE
+                            if (customView != null) { callback?.onCustomViewHidden(); return }
+                            customView = view; customViewCallback = callback
+                            binding.webViewContainer.visibility = View.GONE; binding.topBar.visibility = View.GONE; binding.bottomNavigation.visibility = View.GONE
                             (binding.root as ViewGroup).addView(view, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                             window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
                         }
-
                         override fun onHideCustomView() {
                             if (customView == null) return
-                            (binding.root as ViewGroup).removeView(customView)
-                            customView = null
-                            customViewCallback?.onCustomViewHidden()
+                            (binding.root as ViewGroup).removeView(customView); customView = null; customViewCallback?.onCustomViewHidden()
                             binding.webViewContainer.visibility = View.VISIBLE
-                            
-                            if(!isAppFullScreen) {
-                                binding.topBar.visibility = View.VISIBLE
-                                binding.bottomNavigation.visibility = View.VISIBLE
-                                window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
-                            }
+                            if(!isAppFullScreen) { binding.topBar.visibility = View.VISIBLE; binding.bottomNavigation.visibility = View.VISIBLE; window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE }
                         }
                     }
 
                     settings.apply {
-                        javaScriptEnabled = true
-                        domStorageEnabled = true
-                        databaseEnabled = true
-                        mediaPlaybackRequiresUserGesture = false 
+                        javaScriptEnabled = true; domStorageEnabled = true; databaseEnabled = true; mediaPlaybackRequiresUserGesture = false 
                         cacheMode = if (isIncognito) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
                         setSupportMultipleWindows(false)
                     }
-
                     if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
                         androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
                     }
-
-                    setDownloadListener { url, userAgent, _, mimetype, _ ->
-                        startDownload(url, userAgent, mimetype)
-                    }
-
+                    setDownloadListener { url, userAgent, _, mimetype, _ -> startDownload(url, userAgent, mimetype) }
                     setOnLongClickListener {
                         val result = hitTestResult
                         if (result.type == WebView.HitTestResult.IMAGE_TYPE || result.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
                             result.extra?.let { imgUrl ->
-                                AlertDialog.Builder(this@MainActivity)
-                                    .setTitle("Download Gambar")
-                                    .setMessage("Simpan gambar ini ke HP?")
-                                    .setPositiveButton("Ya") { _, _ -> startDownload(imgUrl, "NightBrowse", "image/*") }
-                                    .setNegativeButton("Batal", null)
-                                    .show()
+                                AlertDialog.Builder(this@MainActivity).setTitle("Download Gambar").setMessage("Simpan gambar ini ke HP?").setPositiveButton("Ya") { _, _ -> startDownload(imgUrl, "NightBrowse", "image/*") }.setNegativeButton("Batal", null).show()
                             }
                             true
                         } else false
@@ -194,26 +215,22 @@ jobs:
             private fun startDownload(url: String, userAgent: String, mimetype: String) {
                 try {
                     val request = DownloadManager.Request(Uri.parse(url)).apply {
-                        setMimeType(mimetype)
-                        addRequestHeader("User-Agent", userAgent)
-                        setTitle("NightBrowse_Download")
+                        setMimeType(mimetype); addRequestHeader("User-Agent", userAgent); setTitle("NightBrowse_Download")
                         setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                         setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "File_${System.currentTimeMillis()}")
                     }
-                    val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                    dm.enqueue(request)
-                    Toast.makeText(this@MainActivity, "Mulai download...", Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Toast.makeText(this@MainActivity, "Gagal: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                    (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+                    Toast.makeText(this, "Mulai download...", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) { Toast.makeText(this, "Gagal: ${e.message}", Toast.LENGTH_SHORT).show() }
             }
 
             private fun setupUIListeners() {
+                binding.urlEditText.setOnItemClickListener { parent, _, position, _ ->
+                    val selectedUrl = parent.getItemAtPosition(position) as String
+                    executeSearchOrUrl(selectedUrl)
+                }
                 binding.urlEditText.setOnEditorActionListener { _, actionId, _ ->
-                    if (actionId == EditorInfo.IME_ACTION_GO) {
-                        executeSearchOrUrl(binding.urlEditText.text.toString())
-                        true
-                    } else false
+                    if (actionId == EditorInfo.IME_ACTION_GO) { executeSearchOrUrl(binding.urlEditText.text.toString()); binding.urlEditText.dismissDropDown(); true } else false
                 }
                 binding.btnRefresh.setOnClickListener { tabManager.getCurrentTab()?.reload() }
                 binding.bottomNavigation.setOnItemSelectedListener { item ->
@@ -247,97 +264,58 @@ jobs:
             }
 
             private fun toggleFullScreenMode() {
-                isAppFullScreen = true
-                binding.topBar.visibility = View.GONE
-                binding.bottomNavigation.visibility = View.GONE
+                isAppFullScreen = true; binding.topBar.visibility = View.GONE; binding.bottomNavigation.visibility = View.GONE
                 window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
                 Toast.makeText(this, "Tampilan Penuh Aktif. Tekan BACK untuk keluar.", Toast.LENGTH_LONG).show()
             }
-
             private fun exitFullScreenMode() {
-                isAppFullScreen = false
-                binding.topBar.visibility = View.VISIBLE
-                binding.bottomNavigation.visibility = View.VISIBLE
+                isAppFullScreen = false; binding.topBar.visibility = View.VISIBLE; binding.bottomNavigation.visibility = View.VISIBLE
                 window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
             }
 
             private fun showSettingsControlPanel() {
-                val bottomSheetDialog = BottomSheetDialog(this@MainActivity)
-                val listView = ListView(this@MainActivity).apply {
-                    setBackgroundColor(android.graphics.Color.parseColor("#1A1A24"))
-                    setPadding(16, 32, 16, 32)
-                }
-
+                val bottomSheetDialog = BottomSheetDialog(this)
+                val listView = ListView(this).apply { setBackgroundColor(android.graphics.Color.parseColor("#1A1A24")); setPadding(16, 32, 16, 32) }
                 val currentEngineName = if (currentSearchEngine.contains("google")) "Google Search" else "DuckDuckGo"
                 val items = arrayOf(
-                    "🛡️ AdBlocker Shield: ${if(AdBlocker.isEnabled) "AKTIF" else "NONAKTIF"}",
-                    "🕵️ Mode Incognito: ${if(isIncognito) "AKTIF" else "NONAKTIF"}",
-                    "🔍 Mesin Pencari: [$currentEngineName]",
-                    "🔲 Aktifkan Mode Layar Penuh",
-                    "⭐ Tambahkan Halaman ke Bookmark",
-                    "📚 Buka Daftar Bookmark",
-                    "⏳ Lihat Riwayat Jelajah (History)",
-                    "📑 Manajer Tab Browsing",
-                    "⬇️ Unduh Halaman Web Ini (HTML)",
-                    "🧹 Hapus Seluruh Cache & Cookies"
+                    "🛡️ AdBlocker Shield: ${if(AdBlocker.isEnabled) "AKTIF" else "NONAKTIF"}", "🕵️ Mode Incognito: ${if(isIncognito) "AKTIF" else "NONAKTIF"}", "🔍 Mesin Pencari: [$currentEngineName]", "🔲 Aktifkan Mode Layar Penuh",
+                    "⭐ Tambahkan Halaman ke Bookmark", "📚 Buka Daftar Bookmark", "⏳ Lihat Riwayat Jelajah (History)", "📑 Manajer Tab Browsing", "⬇️ Unduh Halaman Web Ini", "🧹 Hapus Semua Data (History/Cache)"
                 )
-
-                val adapter = object : ArrayAdapter<String>(this@MainActivity, android.R.layout.simple_list_item_1, items) {
+                val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, items) {
                     override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                         val view = super.getView(position, convertView, parent)
                         val textView = view.findViewById<android.widget.TextView>(android.R.id.text1)
-                        textView.setTextColor(android.graphics.Color.WHITE)
-                        textView.textSize = 16f
-                        view.setPadding(30, 40, 30, 40)
+                        textView.setTextColor(android.graphics.Color.WHITE); textView.textSize = 16f; view.setPadding(30, 40, 30, 40)
                         return view
                     }
                 }
-
                 listView.adapter = adapter
                 listView.setOnItemClickListener { _, _, which, _ ->
                     bottomSheetDialog.dismiss()
                     when (which) {
-                        0 -> {
-                            AdBlocker.isEnabled = !AdBlocker.isEnabled
-                            Toast.makeText(this@MainActivity, "Status AdBlocker Diperbarui!", Toast.LENGTH_SHORT).show()
-                        }
-                        1 -> {
-                            isIncognito = !isIncognito
-                            binding.incognitoIndicator.visibility = if (isIncognito) View.VISIBLE else View.GONE
-                            if(isIncognito) CookieManager.getInstance().removeAllCookies(null)
-                        }
-                        2 -> {
-                            currentSearchEngine = if(currentSearchEngine.contains("google")) "https://duckduckgo.com/?q=" else "https://www.google.com/search?q="
-                            Toast.makeText(this@MainActivity, "Mesin pencari dialihkan!", Toast.LENGTH_SHORT).show()
-                        }
+                        0 -> { AdBlocker.isEnabled = !AdBlocker.isEnabled; Toast.makeText(this, "Status AdBlocker Diperbarui!", Toast.LENGTH_SHORT).show() }
+                        1 -> { isIncognito = !isIncognito; binding.incognitoIndicator.visibility = if (isIncognito) View.VISIBLE else View.GONE; if(isIncognito) CookieManager.getInstance().removeAllCookies(null) }
+                        2 -> { currentSearchEngine = if(currentSearchEngine.contains("google")) "https://duckduckgo.com/?q=" else "https://www.google.com/search?q="; Toast.makeText(this, "Mesin pencari dialihkan!", Toast.LENGTH_SHORT).show() }
                         3 -> toggleFullScreenMode()
-                        4 -> tabManager.getCurrentTab()?.url?.let { bookmarks.add(it); Toast.makeText(this@MainActivity, "Disimpan!", Toast.LENGTH_SHORT).show() }
-                        5 -> AlertDialog.Builder(this@MainActivity).setTitle("⭐ BOOKMARK").setMessage(if(bookmarks.isEmpty()) "Kosong." else bookmarks.joinToString("\n")).show()
-                        6 -> AlertDialog.Builder(this@MainActivity).setTitle("⏳ HISTORY").setMessage(if(history.isEmpty()) "Kosong." else history.joinToString("\n")).show()
+                        4 -> tabManager.getCurrentTab()?.url?.let { if(!bookmarks.contains(it)) { bookmarks.add(it); savePermanentData(); Toast.makeText(this, "Disimpan!", Toast.LENGTH_SHORT).show() } }
+                        5 -> AlertDialog.Builder(this).setTitle("⭐ BOOKMARK").setMessage(if(bookmarks.isEmpty()) "Kosong." else bookmarks.joinToString("\n\n")).show()
+                        6 -> AlertDialog.Builder(this).setTitle("⏳ HISTORY").setMessage(if(history.isEmpty()) "Kosong." else history.joinToString("\n\n")).show()
                         7 -> showTabManagementMenu()
                         8 -> tabManager.getCurrentTab()?.url?.let { startDownload(it, "NightBrowse", "text/html") }
-                        9 -> {
-                            CookieManager.getInstance().removeAllCookies(null)
-                            tabManager.getCurrentTab()?.clearCache(true)
-                            Toast.makeText(this@MainActivity, "Cache dibersihkan!", Toast.LENGTH_SHORT).show()
+                        9 -> { 
+                            CookieManager.getInstance().removeAllCookies(null); tabManager.getCurrentTab()?.clearCache(true)
+                            history.clear(); bookmarks.clear(); savePermanentData(); urlAdapter.notifyDataSetChanged()
+                            Toast.makeText(this, "Seluruh data dihapus!", Toast.LENGTH_SHORT).show() 
                         }
                     }
                 }
-
-                bottomSheetDialog.setContentView(listView)
-                bottomSheetDialog.show()
+                bottomSheetDialog.setContentView(listView); bottomSheetDialog.show()
             }
 
             @Deprecated("Deprecated in Java")
             override fun onBackPressed() {
-                if (customView != null) {
-                    tabManager.getCurrentTab()?.webChromeClient?.onHideCustomView()
-                    return
-                }
-                if (isAppFullScreen) {
-                    exitFullScreenMode()
-                    return
-                }
+                if (customView != null) { tabManager.getCurrentTab()?.webChromeClient?.onHideCustomView(); return }
+                if (isAppFullScreen) { exitFullScreenMode(); return }
                 val currentWeb = tabManager.getCurrentTab()
                 if (currentWeb?.canGoBack() == true) currentWeb.goBack() else super.onBackPressed()
             }
