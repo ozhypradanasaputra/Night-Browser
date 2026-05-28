@@ -262,8 +262,8 @@ jobs:
             }
 
             private fun showSettingsControlPanel() {
-                val bottomSheetDialog = BottomSheetDialog(this)
-                val listView = ListView(this).apply {
+                val bottomSheetDialog = BottomSheetDialog(this@MainActivity)
+                val listView = ListView(this@MainActivity).apply {
                     setBackgroundColor(android.graphics.Color.parseColor("#1A1A24"))
                     setPadding(16, 32, 16, 32)
                 }
@@ -282,11 +282,10 @@ jobs:
                     "🧹 Hapus Seluruh Cache & Cookies"
                 )
 
-                // Layout Adapter untuk teks warna putih rapi khas dark mode Samsung Internet
-                val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, items) {
+                val adapter = object : ArrayAdapter<String>(this@MainActivity, android.R.layout.simple_list_item_1, items) {
                     override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                         val view = super.getView(position, convertView, parent)
-                        val textView = view.findViewById<android.widget.TextView>(android.R.layout.text1)
+                        val textView = view.findViewById<android.widget.TextView>(android.R.id.text1)
                         textView.setTextColor(android.graphics.Color.WHITE)
                         textView.textSize = 16f
                         view.setPadding(30, 40, 30, 40)
@@ -300,7 +299,7 @@ jobs:
                     when (which) {
                         0 -> {
                             AdBlocker.isEnabled = !AdBlocker.isEnabled
-                            Toast.makeText(this, "Status AdBlocker Diperbarui!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@MainActivity, "Status AdBlocker Diperbarui!", Toast.LENGTH_SHORT).show()
                         }
                         1 -> {
                             isIncognito = !isIncognito
@@ -309,18 +308,18 @@ jobs:
                         }
                         2 -> {
                             currentSearchEngine = if(currentSearchEngine.contains("google")) "https://duckduckgo.com/?q=" else "https://www.google.com/search?q="
-                            Toast.makeText(this, "Mesin pencari dialihkan!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@MainActivity, "Mesin pencari dialihkan!", Toast.LENGTH_SHORT).show()
                         }
                         3 -> toggleFullScreenMode()
-                        4 -> tabManager.getCurrentTab()?.url?.let { bookmarks.add(it); Toast.makeText(this, "Disimpan!", Toast.LENGTH_SHORT).show() }
-                        5 -> AlertDialog.Builder(this).setTitle("⭐ BOOKMARK").setMessage(if(bookmarks.isEmpty()) "Kosong." else bookmarks.joinToString("\n")).show()
-                        6 -> AlertDialog.Builder(this).setTitle("⏳ HISTORY").setMessage(if(history.isEmpty()) "Kosong." else history.joinToString("\n")).show()
+                        4 -> tabManager.getCurrentTab()?.url?.let { bookmarks.add(it); Toast.makeText(this@MainActivity, "Disimpan!", Toast.LENGTH_SHORT).show() }
+                        5 -> AlertDialog.Builder(this@MainActivity).setTitle("⭐ BOOKMARK").setMessage(if(bookmarks.isEmpty()) "Kosong." else bookmarks.joinToString("\n")).show()
+                        6 -> AlertDialog.Builder(this@MainActivity).setTitle("⏳ HISTORY").setMessage(if(history.isEmpty()) "Kosong." else history.joinToString("\n")).show()
                         7 -> showTabManagementMenu()
                         8 -> tabManager.getCurrentTab()?.url?.let { startDownload(it, "NightBrowse", "text/html") }
                         9 -> {
                             CookieManager.getInstance().removeAllCookies(null)
                             tabManager.getCurrentTab()?.clearCache(true)
-                            Toast.makeText(this, "Cache dibersihkan!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@MainActivity, "Cache dibersihkan!", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
