@@ -46,7 +46,7 @@ jobs:
         </menu>
         EOF
 
-    - name: Upgrade MainActivity (Home + Control Panel Lengkap)
+    - name: Upgrade MainActivity (Home ke Google + Control Panel)
       run: |
         cat << 'EOF' > NightBrowse_Mobile_Project/app/src/main/java/com/nightbrowse/app/MainActivity.kt
         package com.nightbrowse.app
@@ -75,7 +75,7 @@ jobs:
             private lateinit var tabManager: TabManager
             
             private var isIncognito = false
-            private var currentSearchEngine = "https://duckduckgo.com/?q="
+            private var currentSearchEngine = "https://www.google.com/search?q="
             private val bookmarks = mutableListOf<String>()
             private val history = mutableListOf<String>()
 
@@ -96,7 +96,7 @@ jobs:
                 val webView = tabManager.createNewTab { createConfiguredWebView() }
                 binding.webViewContainer.removeAllViews()
                 binding.webViewContainer.addView(webView)
-                webView.loadUrl("https://duckduckgo.com")
+                webView.loadUrl("https://www.google.com")
             }
 
             @SuppressLint("SetJavaScriptEnabled")
@@ -214,7 +214,7 @@ jobs:
                     when (item.itemId) {
                         R.id.nav_back -> if (currentWeb?.canGoBack() == true) currentWeb.goBack()
                         R.id.nav_forward -> if (currentWeb?.canGoForward() == true) currentWeb.goForward()
-                        R.id.nav_home -> currentWeb?.loadUrl("https://duckduckgo.com")
+                        R.id.nav_home -> currentWeb?.loadUrl("https://www.google.com")
                         R.id.nav_reader -> triggerReaderMode()
                         R.id.nav_menu -> showSettingsControlPanel()
                     }
@@ -240,7 +240,7 @@ jobs:
             }
 
             private fun showSettingsControlPanel() {
-                val currentEngineName = if (currentSearchEngine.contains("duck")) "DuckDuckGo" else "Google Search"
+                val currentEngineName = if (currentSearchEngine.contains("google")) "Google Search" else "DuckDuckGo"
                 val items = arrayOf(
                     "🛡️ AdBlocker Shield: ${if(AdBlocker.isEnabled) "AKTIF (ON)" else "NONAKTIF (OFF)"} [Blokir: ${AdBlocker.adsBlockedCount}]",
                     "🕵️ Mode Incognito: ${if(isIncognito) "AKTIF (ON)" else "NONAKTIF (OFF)"}",
@@ -272,10 +272,10 @@ jobs:
                                 Toast.makeText(this, "Status Incognito Diperbarui!", Toast.LENGTH_SHORT).show()
                             }
                             2 -> {
-                                currentSearchEngine = if(currentSearchEngine.contains("duck")) {
-                                    "https://www.google.com/search?q="
-                                } else {
+                                currentSearchEngine = if(currentSearchEngine.contains("google")) {
                                     "https://duckduckgo.com/?q="
+                                } else {
+                                    "https://www.google.com/search?q="
                                 }
                                 Toast.makeText(this, "Mesin pencari dialihkan!", Toast.LENGTH_SHORT).show()
                             }
@@ -312,27 +312,4 @@ jobs:
             }
 
             @Deprecated("Deprecated in Java")
-            override fun onBackPressed() {
-                if (customView != null) {
-                    tabManager.getCurrentTab()?.webChromeClient?.onHideCustomView()
-                    return
-                }
-                val currentWeb = tabManager.getCurrentTab()
-                if (currentWeb?.canGoBack() == true) currentWeb.goBack() else super.onBackPressed()
-            }
-        }
-        EOF
-
-    - name: Siapkan Gradle & Rakit APK
-      run: |
-        cd NightBrowse_Mobile_Project
-        gradle wrapper --gradle-version 8.4
-        chmod +x gradlew
-        ./gradlew assembleDebug
-
-    - name: Upload APK Hasil Jadi
-      uses: actions/upload-artifact@v4
-      with:
-        name: NightBrowse-APK
-        path: NightBrowse_Mobile_Project/app/build/outputs/apk/debug/app-debug.apk
-    
+            
